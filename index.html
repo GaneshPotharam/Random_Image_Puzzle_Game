@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfect Image Puzzle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .game-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        #puzzle-container {
+            display: grid;
+            gap: 0;
+            margin: 20px auto;
+            border: 2px solid #ddd;
+            position: relative;
+        }
+        .puzzle-piece {
+            background-size: 100% 100%;
+            cursor: grab;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            position: relative;
+            transition: transform 0.2s;
+        }
+        .puzzle-piece.dragging {
+            z-index: 10;
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+        #original-image {
+            max-width: 400px;
+            margin: 20px auto;
+            display: block;
+            border: 2px dashed #ccc;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .controls {
+            margin: 15px 0;
+        }
+        .win-message {
+            color: #4CAF50;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .game-info {
+            display: flex;
+            justify-content: space-around;
+            margin: 15px 0;
+        }
+        .info-box {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            min-width: 80px;
+        }
+        select {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Perfect Image Puzzle</h1>
+         <div id="win-message" class="win-message hidden">🎉 Puzzle Solved! 🎉</div>
+        <div class="controls">
+            <select id="grid-size">
+                <option value="3">3x3 (Easy)</option>
+                <option value="4">4x4 (Medium)</option>
+                <option value="5">5x5 (Hard)</option>
+            </select>
+            <button id="new-game">New Game</button>
+        </div>
+        
+        <div class="game-info">
+            <div class="info-box">
+                Moves: <span id="moves">0</span>
+            </div>
+        </div>
+        
+        <div id="puzzle-container"></div>
+        <img id="original-image" class="hidden" alt="Original Image">
+       
+    </div>
+
+    <script>
+        // Game elements
+        const puzzleContainer = document.getElementById("puzzle-container");
+        const originalImage = document.getElementById("original-image");
+        const newGameBtn = document.getElementById("new-game");
+        const winMessage = document.getElementById("win-message");
+        const movesDisplay = document.getElementById("moves");
+        const gridSizeSelect = document.getElementById("grid-size");
+        
+        // Game variables
+        let gridSize = 3;
+        let pieceSize = 100; // Size of each puzzle piece in pixels
+        let moveCount = 0;
+        let pieces = [];
+        let draggedPiece = null;
+        let currentImageUrl = "";
+
+        // Initialize the game
+        initGame();
+        
+        // Generate a random pattern image
+        function generateRandomImage() {
+            const canvas = document.createElement("canvas");
+            const size = gridSize * pieceSize;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            
+            // Fill background
+            ctx.fillStyle = getRandomColor();
+            ctx.fillRect(0, 0, size, size);
+            
+            // Draw random shapes (fewer for clearer puzzle)
+            for (let i = 0; i < gridSize + 2; i++) {
+                ctx.fillStyle = getRandomColor();
+                const shapeType = Math.floor(Math.random() * 3);
+                const maxSize = size / gridSize * 2;
+                
+                if (shapeType === 0) {
+                    // Circle
+                    ctx.beginPath();
+                    ctx.arc(
+                        Math.random() * size,
+                        Math.random() * size,
+                        Math.random() * maxSize/2 + maxSize/4,
+                        0,
+                        Math.PI * 2
+                    );
+                    ctx.fill();
+                } else if (shapeType === 1) {
+                    // Rectangle
+                    ctx.fillRect(
+                        Math.random() * size/2,
+                        Math.random() * size/2,
+                        Math.random() * maxSize + maxSize/2,
+                        Math.random() * maxSize + maxSize/2
+                    );
+                } else {
+                    // Triangle
+                    ctx.beginPath();
+                    const x = Math.random() * size/2;
+                    const y = Math.random() * size/2;
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + Math.random() * maxSize + maxSize/2, y);
+                    ctx.lineTo(x, y + Math.random() * maxSize + maxSize/2);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+            
+            return canvas.toDataURL();
+        }
+        
+        // Helper: Get random color
+        function getRandomColor() {
+            const colors = [
+                "#FF6B6B", "#4ECDC4", "#45B7D1", 
+                "#FFBE0B", "#9B5DE5", "#FF9E7D",
+                "#A5FFD6", "#B388EB", "#8093F1"
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+        
+        // Create puzzle pieces
+        function createPieces(imageUrl) {
+            puzzleContainer.innerHTML = "";
+            pieces = [];
+            moveCount = 0;
+            movesDisplay.textContent = "0";
+            winMessage.classList.add("hidden");
+            
+            // Set container size
+            const containerSize = gridSize * pieceSize;
+            puzzleContainer.style.width = `${containerSize}px`;
+            puzzleContainer.style.height = `${containerSize}px`;
+            puzzleContainer.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+            
+            // Create canvas for each piece
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = containerSize;
+            tempCanvas.height = containerSize;
+            const tempCtx = tempCanvas.getContext("2d");
+            
+            // Load image first
+            const img = new Image();
+            img.src = imageUrl;
+            img.onload = function() {
+                tempCtx.drawImage(img, 0, 0, containerSize, containerSize);
+                
+                // Create pieces
+                const piecePositions = [];
+                for (let row = 0; row < gridSize; row++) {
+                    for (let col = 0; col < gridSize; col++) {
+                        piecePositions.push({row, col});
+                    }
+                }
+                
+                // Shuffle positions (leave one empty for sliding puzzle)
+                shuffleArray(piecePositions);
+                
+                // Create each piece
+                piecePositions.forEach((pos, index) => {
+                    const pieceCanvas = document.createElement("canvas");
+                    pieceCanvas.width = pieceSize;
+                    pieceCanvas.height = pieceSize;
+                    const pieceCtx = pieceCanvas.getContext("2d");
+                    
+                    // Draw the correct portion of the image
+                    pieceCtx.drawImage(
+                        tempCanvas,
+                        pos.col * pieceSize, pos.row * pieceSize, pieceSize, pieceSize, // source
+                        0, 0, pieceSize, pieceSize // destination
+                    );
+                    
+                    const piece = document.createElement("div");
+                    piece.className = "puzzle-piece";
+                    piece.style.backgroundImage = `url(${pieceCanvas.toDataURL()})`;
+                    piece.dataset.row = pos.row;
+                    piece.dataset.col = pos.col;
+                    piece.dataset.index = index;
+                    piece.draggable = true;
+                    
+                    piece.addEventListener("dragstart", handleDragStart);
+                    piece.addEventListener("dragover", handleDragOver);
+                    piece.addEventListener("drop", handleDrop);
+                    piece.addEventListener("dragend", handleDragEnd);
+                    
+                    puzzleContainer.appendChild(piece);
+                    pieces.push({
+                        element: piece,
+                        currentRow: pos.row,
+                        currentCol: pos.col
+                    });
+                });
+            };
+        }
+        
+        // Drag and drop handlers
+        function handleDragStart(e) {
+            draggedPiece = this;
+            this.classList.add("dragging");
+            e.dataTransfer.setData("text/plain", this.dataset.index);
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            if (!draggedPiece || draggedPiece === this) return;
+            
+            // Swap positions in the array
+            const fromIndex = parseInt(draggedPiece.dataset.index);
+            const toIndex = parseInt(this.dataset.index);
+            
+            // Update DOM positions
+            const temp = this.style.backgroundImage;
+            this.style.backgroundImage = draggedPiece.style.backgroundImage;
+            draggedPiece.style.backgroundImage = temp;
+            
+            // Update data attributes
+            const tempRow = this.dataset.row;
+            const tempCol = this.dataset.col;
+            this.dataset.row = draggedPiece.dataset.row;
+            this.dataset.col = draggedPiece.dataset.col;
+            draggedPiece.dataset.row = tempRow;
+            draggedPiece.dataset.col = tempCol;
+            
+            // Update move count
+            moveCount++;
+            movesDisplay.textContent = moveCount;
+            
+            // Check win condition
+            checkWin();
+        }
+        
+        function handleDragEnd() {
+            this.classList.remove("dragging");
+            draggedPiece = null;
+        }
+        
+        // Check win condition
+        function checkWin() {
+            const allPieces = document.querySelectorAll(".puzzle-piece");
+            let isSolved = true;
+            
+            allPieces.forEach(piece => {
+                const currentRow = parseInt(piece.dataset.row);
+                const currentCol = parseInt(piece.dataset.col);
+                const originalRow = Math.floor(parseInt(piece.dataset.index) / gridSize);
+                const originalCol = parseInt(piece.dataset.index) % gridSize;
+                
+                if (currentRow !== originalRow || currentCol !== originalCol) {
+                    isSolved = false;
+                }
+            });
+            
+            if (isSolved) {
+                winGame();
+            }
+        }
+        
+        // Win the game
+        function winGame() {
+            winMessage.classList.remove("hidden");
+        }
+        
+        // Shuffle array
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+        
+        // Initialize game
+        function initGame() {
+            gridSize = parseInt(gridSizeSelect.value);
+            currentImageUrl = generateRandomImage();
+            originalImage.src = currentImageUrl;
+            originalImage.classList.remove("hidden");
+            createPieces(currentImageUrl);
+        }
+        
+        // New game button
+        newGameBtn.addEventListener("click", initGame);
+    </script>
+</body>
+</html>
